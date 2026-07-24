@@ -269,7 +269,7 @@ def _v2_cell(
 
 
 def build_run_matrix_v2() -> tuple[RunCell, ...]:
-    """REAL-CAL-V2 matrix implementing 实验.md experiments E1-E7 on 10 seeds.
+    """REAL-CAL matrix implementing 实验.md experiments E1-E7 on 10 seeds.
 
     E2 (value identification), E4 (trust evolution) and E8 (runtime breakdown)
     are measured inside these cells rather than adding cells of their own.
@@ -345,3 +345,4 @@ def count_run_cells_v2() -> dict[str, int]:
     for cell in matrix:
         by_family[cell.family] = by_family.get(cell.family, 0) + 1
     return {"total": len(matrix), **by_family}
+
