@@ -16,22 +16,25 @@ beyond "real-data-calibrated semi-synthetic evidence".
 REALCAL_DATASET_ID = "REAL-CAL-V1"
 REALCAL_PROFILE_VERSION = "real-cal-v1-profile-1.0.0"
 
-# REAL-CAL-V2: identical calibrated distributions, but the task-value unit is
-# rescaled so the market admits profitable trades. V1 froze V in [0.5, 1.5]
+# The current REAL-CAL benchmark uses identical calibrated distributions, but
+# the task-value unit is
+# rescaled so the market admits profitable trades. The legacy profile froze
+# V in [0.5, 1.5]
 # (inherited from SYN-V2-1) which put the per-report value (median v_ijt 0.17)
 # strictly below the cheapest worker cost (0.5) — no mechanism can be
-# economically viable there. V2 multiplies the value band by VALUE_SCALE so
+# economically viable there. The current profile scales the value band by
+# VALUE_SCALE so
 # that the median predicted pair value ~ 2-4x the median truthful bid. The
-# scale rule is preregistered BEFORE observing any V2 comparison result.
-REALCAL_V2_DATASET_ID = "REAL-CAL-V2"
-REALCAL_V2_PROFILE_VERSION = "real-cal-v2-profile-1.0.0"
+# scale rule was fixed before observing any formal comparison result.
+REALCAL_V2_DATASET_ID = "REAL-CAL"
+REALCAL_V2_PROFILE_VERSION = "real-cal-profile-1.0.0"
 REALCAL_V2_VALUE_SCALE = 30
 
 # Preregistered REAL-CAL seed set: the first 10 formal seeds. Fixed BEFORE any
 # result is observed (Phase 4C preregistration). Paired-bootstrap statistics use
 # exactly these 10 paired seeds; seeds are never added after seeing results.
-# The same frozen set is reused for REAL-CAL-V2 (new dataset version, same
-# pre-results discipline).
+# The same frozen set is reused for REAL-CAL under the same pre-results
+# discipline.
 REALCAL_SEEDS = tuple(range(20260715, 20260725))
 
 __all__ = [
@@ -42,3 +45,4 @@ __all__ = [
     "REALCAL_V2_PROFILE_VERSION",
     "REALCAL_V2_VALUE_SCALE",
 ]
+
