@@ -8,10 +8,10 @@ url: "https://github.com/useixname/OATS-REALCAL-V2.3"
 repository-code: "https://github.com/useixname/OATS-REALCAL-V2.3"
 license: MIT
 authors:
-  - family-names: Deng
-    given-names: Qingyong
   - family-names: Mo
     given-names: Tao
+  - family-names: Deng
+    given-names: Qingyong
   - family-names: Ouyang
     given-names: Liangkun
   - family-names: Liu
