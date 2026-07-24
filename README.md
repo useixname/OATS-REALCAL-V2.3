@@ -1,6 +1,3 @@
-Exit code: 0
-Wall time: 3.5 seconds
-Output:
 # OATS REAL-CAL-V2.3
 
 This repository is the public research-code release for **OATS: Outcome-Anchored
@@ -62,4 +59,3 @@ with their respective terms.
 ## Citation
 
 Please cite the paper and the repository metadata in [`CITATION.cff`](CITATION.cff).
-

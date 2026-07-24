@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the OATS paper and this repository."
+title: "OATS REAL-CAL-V2.3 Research Code"
+type: software
+version: "2.3"
+date-released: 2026-07-24
+url: "https://github.com/useixname/OATS-REALCAL-V2.3"
+repository-code: "https://github.com/useixname/OATS-REALCAL-V2.3"
+license: MIT
+authors:
+  - family-names: Deng
+    given-names: Qingyong
+  - family-names: Mo
+    given-names: Tao
+  - family-names: Ouyang
+    given-names: Liangkun
+  - family-names: Liu
+    given-names: Anfeng
+
