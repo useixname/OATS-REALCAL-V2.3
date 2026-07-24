@@ -1,11 +1,10 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite the OATS paper and this repository."
-title: "OATS REAL-CAL-V2.3 Research Code"
+title: "OATS REAL-CAL Research Code"
 type: software
-version: "2.3"
 date-released: 2026-07-24
-url: "https://github.com/useixname/OATS-REALCAL-V2.3"
-repository-code: "https://github.com/useixname/OATS-REALCAL-V2.3"
+url: "https://github.com/useixname/OATS-REALCAL"
+repository-code: "https://github.com/useixname/OATS-REALCAL"
 license: MIT
 authors:
   - family-names: Mo
