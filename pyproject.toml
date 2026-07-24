@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "oats-realcal-v2-3"
-version = "2.3.0"
-description = "OATS mechanism and REAL-CAL-V2.3 reproducibility code"
+name = "oats-realcal"
+version = "1.0.0"
+description = "OATS mechanism and REAL-CAL reproducibility code"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {file = "LICENSE"}
@@ -32,3 +32,4 @@ include = ["src", "src.*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+
