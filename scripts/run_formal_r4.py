@@ -31,13 +31,13 @@ def main() -> int:
         "--matrix",
         choices=("v1", "v2"),
         default="v1",
-        help="v1 = legacy F1-F5 matrix; v2 = REAL-CAL-V2 E1-E7 matrix (实验.md)",
+        help="v1 = legacy F1-F5 matrix; v2 = REAL-CAL E1-E7 matrix (实验.md)",
     )
     parser.add_argument(
         "--trace-hashes",
         type=Path,
         default=ROOT / "trace_hashes.json",
-        help="Trace hash manifest; use data/REAL-CAL-V2/trace_hashes_realcal.json for REAL-CAL-V2 runs",
+        help="Trace hash manifest; use data/REAL-CAL/trace_hashes_realcal.json for REAL-CAL runs",
     )
     parser.add_argument(
         "--workers",
@@ -92,3 +92,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
