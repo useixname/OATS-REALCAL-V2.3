@@ -1,6 +1,6 @@
 # Data preparation
 
-REAL-CAL-V2.3 is a real-data-calibrated semi-synthetic benchmark. The release
+REAL-CAL is a real-data-calibrated semi-synthetic benchmark. The release
 does not redistribute the underlying third-party files. Obtain the datasets
 from their original providers under their respective terms, then place the
 extracted files in this layout:
@@ -33,8 +33,8 @@ The command writes:
 data_real/REAL-CAL-V1/calibration_profile.json
 ```
 
-REAL-CAL-V2 uses this real-data calibration profile and the version-2 value
-scale in the trace generator. Generate the ten paired manuscript seeds with:
+REAL-CAL uses this real-data calibration profile and the calibrated value scale
+in the trace generator. Generate the ten paired manuscript seeds with:
 
 ```bash
 python scripts/generate_realcal_trace.py \
@@ -44,5 +44,6 @@ python scripts/generate_realcal_trace.py \
   --workers 0
 ```
 
-The generated traces and hash manifest are written below `data/REAL-CAL-V2/`.
+The generated traces and hash manifest are written below `data/REAL-CAL/`.
 Generation refuses to overwrite existing seed directories.
+
