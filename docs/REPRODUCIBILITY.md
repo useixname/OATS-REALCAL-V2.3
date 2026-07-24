@@ -1,4 +1,4 @@
-# REAL-CAL-V2.3 reproducibility workflow
+# REAL-CAL reproducibility workflow
 
 This workflow reconstructs the formal evaluation in a fresh output directory.
 Do not use it to overwrite an existing frozen result tree.
@@ -21,7 +21,7 @@ Prepare the third-party data and traces as described in [`DATA.md`](DATA.md).
 
 ```bash
 python -m pytest -q
-python scripts/preflight_v2_3.py
+python scripts/preflight_realcal.py
 ```
 
 The preflight is fail-closed: a failed acceptance condition blocks the formal
@@ -35,10 +35,10 @@ or a shared machine requires a lower process count.
 ```bash
 python scripts/run_formal_r4.py \
   --matrix v2 \
-  --data-root data/REAL-CAL-V2 \
-  --trace-hashes data/REAL-CAL-V2/trace_hashes_realcal.json \
-  --output-root results/reproduce_realcal_v2_3 \
-  --run-version formal-realcal-v2.3-1.0.0 \
+  --data-root data/REAL-CAL \
+  --trace-hashes data/REAL-CAL/trace_hashes_realcal.json \
+  --output-root results/reproduce_realcal \
+  --run-version formal-realcal \
   --seeds 20260715 20260716 20260717 20260718 20260719 \
           20260720 20260721 20260722 20260723 20260724 \
   --workers 0
@@ -55,10 +55,10 @@ decisions:
 ```bash
 python scripts/run_formal_r4.py \
   --matrix v2 \
-  --data-root data/REAL-CAL-V2 \
-  --trace-hashes data/REAL-CAL-V2/trace_hashes_realcal.json \
-  --output-root results/reproduce_realcal_v2_3 \
-  --run-version formal-realcal-v2.3-1.0.0 \
+  --data-root data/REAL-CAL \
+  --trace-hashes data/REAL-CAL/trace_hashes_realcal.json \
+  --output-root results/reproduce_realcal \
+  --run-version formal-realcal \
   --seeds 20260715 20260716 20260717 20260718 20260719 \
           20260720 20260721 20260722 20260723 20260724 \
   --workers 0 \
@@ -68,11 +68,12 @@ python scripts/run_formal_r4.py \
 ## 5. Aggregate analysis
 
 ```bash
-python scripts/analyze_realcal_v2.py \
-  --results results/reproduce_realcal_v2_3 \
-  --out reports/reproduce_realcal_v2_3
+python scripts/analyze_realcal.py \
+  --results results/reproduce_realcal \
+  --out reports/reproduce_realcal
 ```
 
 The manuscript uses paired seeds as the sampling unit. Primary contrasts use
 paired differences and 10,000 paired-bootstrap resamples with bootstrap seed
 20260715. Descriptive grids and curves are not multiplicity-controlled tests.
+
