@@ -7,7 +7,7 @@ is consumable by the existing ``trace_loader`` / ``formal_runner`` without chang
 
 Dataset versions:
   * REAL-CAL-V1 — frozen; V in [0.5, 1.5] (inherited from SYN-V2-1).
-  * REAL-CAL-V2 — identical distributions with the task-value unit rescaled by
+  * REAL-CAL — identical distributions with the task-value unit rescaled by
     ``REALCAL_V2_VALUE_SCALE`` (preregistered market-viability recalibration).
 """
 
@@ -181,3 +181,4 @@ def generate_realcal_trace(
         "anchor_version": anchor_version,
         "profile_hash": cfg.profile_hash,
     }
+
