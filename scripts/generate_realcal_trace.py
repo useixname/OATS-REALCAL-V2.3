@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Generate REAL-CAL-V1 semi-synthetic traces from the frozen calibration profile.
+"""Generate REAL-CAL semi-synthetic traces from the frozen calibration profile.
 
 Usage:
   python scripts/generate_realcal_trace.py --seeds 20260715              # one seed
   python scripts/generate_realcal_trace.py --all                         # all 30 formal seeds
 
-Writes data/REAL-CAL-V1/<seed>/ with the same file layout as SYN-V2-1 and a
+Writes data/<dataset>/<seed>/ with the same file layout as SYN-V2-1 and a
 per-run trace_hashes_realcal.json manifest. Refuses to overwrite existing seed
 directories (version bump required), mirroring the SYN safety rule.
 """
@@ -55,12 +55,12 @@ def main() -> int:
         type=int,
         default=1,
         choices=(1, 2),
-        help="1 = REAL-CAL-V1 (frozen), 2 = REAL-CAL-V2 (value-scale recalibration)",
+        help="1 = legacy REAL-CAL calibration, 2 = current REAL-CAL benchmark",
     )
     parser.add_argument("--workers", type=int, default=10, help="Parallel processes; 0 = os.cpu_count()")
     args = parser.parse_args()
 
-    dataset_id = "REAL-CAL-V1" if args.dataset_version == 1 else "REAL-CAL-V2"
+    dataset_id = "REAL-CAL-V1" if args.dataset_version == 1 else "REAL-CAL"
     if args.out_root is None:
         args.out_root = ROOT / "data" / dataset_id
 
@@ -105,3 +105,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
