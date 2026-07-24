@@ -1,18 +1,18 @@
-# OATS REAL-CAL-V2.3
+# OATS REAL-CAL
 
 This repository is the public research-code release for **OATS: Outcome-Anchored
 Trust and Settlement for Online Value-Aware Crowdsensed Data Trading**. It
 contains the mechanism implementation, REAL-CAL data-construction pipeline,
 formal experiment driver, analysis code, and tests associated with run
-`formal-realcal-v2.3-1.0.0`.
+`formal-realcal`.
 
-Repository: <https://github.com/useixname/OATS-REALCAL-V2.3>
+Repository: <https://github.com/useixname/OATS-REALCAL>
 
 ## What is included
 
 - `src/oats_v2/`: OATS mechanism, ledgers, settlement, trust, screening,
   calibration, REAL-CAL generation, experiment runner, and LP comparator.
-- `scripts/`: data-profile construction, trace generation, V2.3 preflight,
+- `scripts/`: data-profile construction, trace generation, formal preflight,
   formal execution, audit generation, and result analysis.
 - `tests/`: implementation, property, oracle, data, experiment, calibration,
   robustness, and REAL-CAL tests.
@@ -44,11 +44,12 @@ python -m pytest -q
 ## Frozen identity
 
 The released copies of `scripts/run_formal_r4.py` and
-`scripts/analyze_realcal_v2.py` are the scripts identified by the manuscript's
-frozen V2.3 evidence record.
+`scripts/analyze_realcal.py` are the scripts identified by the manuscript's
+frozen evidence record.
 
-Earlier V2.x pilots and later experimental branches are intentionally excluded:
-this repository is scoped to the V2.3 evidence used by the manuscript.
+Earlier development runs and later experimental branches are intentionally
+excluded: this repository is scoped to the frozen evidence used by the
+manuscript.
 
 ## License and data terms
 
@@ -59,3 +60,4 @@ with their respective terms.
 ## Citation
 
 Please cite the paper and the repository metadata in [`CITATION.cff`](CITATION.cff).
+
