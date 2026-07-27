@@ -137,7 +137,7 @@ def fast_bid(method: MethodConfig, c_i: Decimal, gbar: dict[str, Decimal], *, mo
         for e in gbar
     }
     d = min(utilities.values())
-    # With a large score bonus (REAL-CAL value scale) the effective cost can
+    # With a large score bonus (REAL-CAL-V2 value scale) the effective cost can
     # be negative: participation is strictly profitable even at zero base pay.
     # The truthful bid is then clamped at the grid floor (workers cannot pay
     # the platform); IC/IR are unaffected because winning at bid 0 weakly
@@ -205,4 +205,3 @@ def build_contract_from_row(
         money_grid=Decimal("0.001"),
         score_cap=sbar,
     )
-

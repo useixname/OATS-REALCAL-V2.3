@@ -109,6 +109,12 @@ def compute_trust_metrics(
 ) -> TrustMetrics:
     selected = sum(1 for e in trust_events if e.get("selected"))
     feedback = sum(1 for e in trust_events if e.get("feedback"))
+    transitions = sum(
+        1 for e in trust_events if e.get("feedback") and e.get("trust_transition_applied")
+    )
+    duplicate_suppressions = sum(
+        1 for e in trust_events if e.get("feedback") and e.get("duplicate_feedback_suppressed")
+    )
     qualities = [D(e["quality"]) for e in trust_events if e.get("feedback") and "quality" in e]
     trust_vals = [D(e["rho"]) for e in trust_events if e.get("feedback") and "rho" in e]
     brier = None
@@ -135,6 +141,8 @@ def compute_trust_metrics(
         population_available=population_size,
         selected_count=selected,
         feedback_count=feedback,
+        trust_transition_count=transitions,
+        duplicate_feedback_suppressed_count=duplicate_suppressions,
         brier=brier,
         auc=auc,
     )

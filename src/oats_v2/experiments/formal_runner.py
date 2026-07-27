@@ -22,7 +22,7 @@ from ..ledger import LedgerState
 from ..settlement import settle_base_for_status, settle_task_scores
 from ..shadow_envelope import DualController, ShadowEnvelopeState
 from ..task_activation import activate_task_atomic
-from ..trust import TrustState
+from ..trust import TrustState, trust_feedback_id
 from ..types import AllocationOutcome, AllocationSnapshot, Candidate, MechanismStatus, Task
 from .checkpoint import CheckpointState
 from .lp_comparator import LPComparatorCache, compute_lp_gap
@@ -237,7 +237,7 @@ def simulate_cell(cell: RunCell, trace: TraceBundle, lp_cache: LPComparatorCache
             slot_tasks.sort(key=lambda t: t.task_id)
             tasks_this_slot = {t.task_id: t for t in slot_tasks}
             task_keys: dict[str, str] = {}
-            # Dual pacing: remaining-quota flow control on the SHADOW
+            # V2.3 dual pacing: remaining-quota flow control on the SHADOW
             # envelope (the resource that actually binds). Signal history:
             #   * V2 paced the per-slot gross reserve envelope C_env — lambda
             #     rose with zero budget pressure (15% net loss vs no-dual).
@@ -249,7 +249,7 @@ def simulate_cell(cell: RunCell, trace: TraceBundle, lp_cache: LPComparatorCache
             #     diurnal binge, lambda kept rising while current flow was
             #     already zero, then decayed too slowly; 23% of the envelope
             #     went unused and net value fell 24% below no-dual.
-            # The controller sets instantaneous flow against the remaining quota:
+            # V2.3 controls the instantaneous flow against the remaining quota:
             #     quota_t    = shadow_free(t-) / (T - t + 1)
             #     gradient_t = flow_t / quota_t - 1
             # (paper Eq. (71) with P_res = this slot's reserved worst-case
@@ -446,7 +446,296 @@ def simulate_cell(cell: RunCell, trace: TraceBundle, lp_cache: LPComparatorCache
                         "status": screen_status.value,
                         "rare_event": rare if method.use_screening else False,
                     }
-        …2806 tokens truncated…l.method_id,
+                )
+                t0 = time.perf_counter()
+                receipt = settle_base_for_status(ledger, key, screen_status)
+                # V2.3: settle the shadow base cap at the realized payment and
+                # return the worst-case slack (paper Eq. (91) P_return). The V1
+                # shadow kept every cap committed forever, which silently turned
+                # the envelope into a hard market-capacity cap (~43k purchases
+                # at b=0.25) that no controller could pace around.
+                realized_base = (
+                    Decimal(receipt["amount"]) if receipt.get("kind") == "release" else Decimal("0")
+                )
+                shadow.settle_base(key, realized_base)
+                t_settlement += time.perf_counter() - t0
+
+                missing_key = str(cell.missing_prob)
+                delay_key = str(cell.delay)
+                outcome_available = not task.missing_mask.get(missing_key, False)
+                if outcome_available and cell.delay > 0:
+                    avail_slot = slot + task.delay_mask.get(delay_key, 0)
+                    outcome_available = avail_slot <= HORIZON
+
+                purchased_statuses = (
+                    MechanismStatus.SCREEN_PASS,
+                    MechanismStatus.SCREEN_SOFT_PASS,
+                    MechanismStatus.COLD_START,
+                )
+                if screen_status in purchased_statuses and outcome_available:
+                    purchased_count += 1
+                    gross_total += pot.v_ijt
+                    mc_estimated.append(vhat)
+                    mc_realized.append(pot.v_ijt)
+                    task_sbars[task_id] = sbar
+                    task_score_payments.setdefault(task_keys[task_id], {})[key] = pot.score
+                    outcome_slot = slot + task.delay_mask.get(delay_key, 0)
+                    feedback_id = trust_feedback_id(
+                        cell.cell_id,
+                        outcome_slot,
+                        task_id,
+                        worker_id,
+                    )
+                    rho_before = trust.values[worker_id]
+                    transitions_before = trust.transition_count
+                    duplicate_suppressions_before = (
+                        trust.duplicate_feedback_suppressed_count
+                    )
+                    trust.update(
+                        worker_id,
+                        feedback_id,
+                        pot.score,
+                        alpha0,
+                        available=True,
+                        independent=True,
+                    )
+                    transition_applied = trust.transition_count == transitions_before + 1
+                    duplicate_suppressed = (
+                        trust.duplicate_feedback_suppressed_count
+                        == duplicate_suppressions_before + 1
+                    )
+                    trust_events.append(
+                        {
+                            "selected": True,
+                            "feedback": True,
+                            "feedback_id": feedback_id,
+                            "quality": pot.score,
+                            "rho": rho_before,
+                            "trust_transition_applied": transition_applied,
+                            "duplicate_feedback_suppressed": duplicate_suppressed,
+                        }
+                    )
+                    deadline_total += 1
+                    if outcome_slot <= task.deadline:
+                        deadline_met += 1
+                elif screen_status in purchased_statuses:
+                    trust_events.append({"selected": True, "feedback": False})
+
+            for task_id, task_key in task_keys.items():
+                released_total = Decimal("0")
+                if task_key in ledger.task_escrows:
+                    payments = task_score_payments.get(task_key, {})
+                    sbar = task_sbars.get(task_id)
+                    t0 = time.perf_counter()
+                    if sbar is not None and payments:
+                        # Score payment = sbar * quality, floor-quantized to the
+                        # money grid and clamped by the remaining task escrow in
+                        # deterministic key order (paper Theorem 5: total bonus
+                        # never exceeds the escrow; unused escrow is returned).
+                        # sbar itself is quantized upward at 1e-6, so K payments
+                        # at quality ~1 could otherwise overshoot gamma*V by a
+                        # few micro-units.
+                        grid = Decimal("0.001")
+                        remaining = ledger.task_escrows[task_key]
+                        quantized: dict[str, Decimal] = {}
+                        for pay_key in sorted(payments):
+                            amount = (sbar * payments[pay_key]).quantize(grid, rounding=ROUND_DOWN)
+                            if amount > remaining:
+                                amount = remaining.quantize(grid, rounding=ROUND_DOWN)
+                            quantized[pay_key] = amount
+                            remaining -= amount
+                        ledger.close_task(task_key, quantized)
+                        released_total = sum(quantized.values(), Decimal("0"))
+                    else:
+                        ledger.close_task(task_key, {})
+                    t_settlement += time.perf_counter() - t0
+                # Shadow: tasks that never received a contract stay in `held` and
+                # return to free (Spec §7/§3); contracted tasks settle at the
+                # realized score payout and return the unused escrow (V2.3,
+                # paper Eq. (93)).
+                if task_key in shadow.held_tasks:
+                    shadow.release_empty_task(task_key)
+                elif task_key in shadow.committed_tasks:
+                    shadow.settle_task(task_key, released_total)
+
+            quota = shadow_free_before / Decimal(HORIZON - slot + 1)
+            if quota > 0:
+                dual.update((shadow_free_before - shadow.free) / quota, Decimal("1"), eta)
+
+            if slot in PREFIX_CHECKPOINTS:
+                value_prefix[str(slot)] = str(gross_total)
+            if slot % 50 == 0:
+                trust_trajectory[str(slot)] = {
+                    stratum: str(sum((trust.values[w] for w in ids), Decimal("0")) / Decimal(len(ids)))
+                    for stratum, ids in workers_by_stratum.items()
+                }
+
+    except OnlineFirewallViolation as exc:
+        invariant_status = "FIREWALL_VIOLATION"
+        failure_counts[str(exc)] = 1
+
+    try:
+        assert_all(ledger, shadow, ())
+    except Exception as exc:
+        failure_counts[str(exc)] = failure_counts.get(str(exc), 0) + 1
+        invariant_status = "INVALID"
+
+    elapsed = time.perf_counter() - start
+
+    records: list[dict[str, Any]] = []
+    if pop_quality_n:
+        records.append({"potential_score": pop_quality_sum / pop_quality_n, "selected": False, "stratum": "aggregate"})
+    if sel_quality_n:
+        record: dict[str, Any] = {
+            "realized_score": sel_quality_sum / sel_quality_n,
+            "selected": True,
+            "stratum": "aggregate",
+        }
+        if effort_delta_n:
+            record["effort_delta_quality"] = effort_delta_sum / Decimal(effort_delta_n)
+        records.append(record)
+    for stratum, count in type_selected.items():
+        if type_quality_n.get(stratum):
+            records.append(
+                {
+                    "stratum": stratum,
+                    "realized_score": type_quality[stratum] / Decimal(type_quality_n[stratum]),
+                    "selected": True,
+                }
+            )
+
+    config_hash = hashlib.sha256(json.dumps(dataclasses.asdict(cell), default=str, sort_keys=True).encode()).hexdigest()
+    result = RunResult(
+        cell_id=cell.cell_id,
+        config_hash=config_hash,
+        trace_hash=trace.trace_hash,
+        method_id=cell.method_id,
+        seed=cell.seed,
+        gamma=str(cell.gamma),
+        budget_ratio=str(cell.budget_ratio),
+        invariant_status=invariant_status,
+        task_count=len(trace.tasks_by_id),
+        worker_count=len(trace.workers),
+        activated_count=activated_count,
+        contracted_count=contracted_count,
+        purchased_count=purchased_count,
+        base_paid=str(ledger.paid_base),
+        score_paid=str(ledger.paid_score),
+        total_paid=str(ledger.paid),
+        final_ledger=ledger.snapshot(),
+        final_shadow=shadow.snapshot(),
+        effort_histogram=effort_hist,
+        gross_external_value=str(gross_total),
+        platform_net_value=str(gross_total - ledger.paid),
+        failure_counts=failure_counts,
+        runtime_seconds=elapsed,
+        peak_memory_mb=0.0,
+    )
+    result.rejection_counts = rejection_counts
+    result.trust_trajectory = trust_trajectory
+    result.value_prefix = value_prefix
+    result.runtime_breakdown = {
+        "selection_and_critical_payment": round(t_selection, 3),
+        "screening": round(t_screening, 3),
+        "settlement": round(t_settlement, 3),
+        "other": round(max(0.0, elapsed - t_selection - t_screening - t_settlement), 3),
+        "total": round(elapsed, 3),
+    }
+    rho, topk = spearman_and_topk(mc_estimated, mc_realized)
+    result.mc_correlation = rho
+    result.mc_top_k_overlap = topk
+    if mc_estimated:
+        undefined = sum(1 for v in mc_realized if v == 0)
+        result.mc_undefined_rate = Decimal(undefined) / Decimal(len(mc_realized))
+    if deadline_total:
+        result.deadline_satisfaction = Decimal(deadline_met) / Decimal(deadline_total)
+    if compute_lp:
+        lp_result = compute_lp_gap(
+            lp_cache,
+            cell.lp_cache_key(),
+            trace,
+            budget,
+            cell.gamma,
+            gross_total,
+            arrival_multiplier=cell.arrival_multiplier,
+        )
+        result.lp = lp_result
+    final_trust_by_stratum = {
+        stratum: [trust.values[w] for w in ids] for stratum, ids in workers_by_stratum.items()
+    }
+    if trust.feedback_submission_count != sum(
+        1 for event in trust_events if event.get("feedback")
+    ):
+        raise AssertionError("trust feedback submission count does not match completed feedback events")
+    if trust.transition_count != sum(
+        1 for event in trust_events if event.get("trust_transition_applied")
+    ):
+        raise AssertionError("trust transition count does not match applied transition events")
+    if trust.duplicate_feedback_suppressed_count != sum(
+        1 for event in trust_events if event.get("duplicate_feedback_suppressed")
+    ):
+        raise AssertionError("duplicate trust suppression count does not match event audit")
+    return finalize_run_result(
+        result,
+        records=records,
+        screening_events=screening_events,
+        trust_events=trust_events,
+        population_size=len(trace.workers),
+        final_trust_by_stratum=final_trust_by_stratum,
+    )
+
+
+_WORKER: dict[str, Any] = {}
+
+
+def _init_formal_worker(data_root: str, trace_hashes: dict[str, Any]) -> None:
+    _WORKER["data_root"] = Path(data_root)
+    _WORKER["trace_hashes"] = trace_hashes
+    _WORKER["traces"] = {}
+    _WORKER["lp_cache"] = LPComparatorCache()
+
+
+def _get_worker_trace(seed: int) -> TraceBundle:
+    traces: dict[int, TraceBundle] = _WORKER["traces"]
+    if seed not in traces:
+        traces[seed] = load_trace(
+            seed,
+            _WORKER["data_root"],
+            _WORKER["trace_hashes"],
+            verify_hashes=False,
+            # Simulation only needs available_by_slot; skip the full eligibility
+            # index (LP-only) to roughly halve per-worker memory so more workers
+            # fit in RAM. Logic-preserving for simulate_cell.
+            load_eligibility_index=False,
+        )
+    return traces[seed]
+
+
+def _cell_from_payload(payload: dict[str, Any]) -> RunCell:
+    return RunCell(
+        cell_id=payload["cell_id"],
+        family=payload["family"],
+        seed=int(payload["seed"]),
+        method_id=payload["method_id"],
+        gamma=Decimal(payload["gamma"]),
+        budget_ratio=Decimal(payload["budget_ratio"]),
+        contamination=Decimal(payload["contamination"]),
+        delay=int(payload["delay"]),
+        missing_prob=Decimal(payload["missing_prob"]),
+        arrival_multiplier=Decimal(payload["arrival_multiplier"]),
+        alpha=Decimal(payload.get("alpha", "0.2")),
+        theta_a=Decimal(payload.get("theta_a", "0.75")),
+        lambda_max=Decimal(payload.get("lambda_max", "10")),
+        order_index=int(payload["order_index"]),
+    )
+
+
+def _cell_payload(cell: RunCell) -> dict[str, Any]:
+    return {
+        "cell_id": cell.cell_id,
+        "family": cell.family,
+        "seed": cell.seed,
+        "method_id": cell.method_id,
         "gamma": str(cell.gamma),
         "budget_ratio": str(cell.budget_ratio),
         "contamination": str(cell.contamination),
@@ -541,7 +830,7 @@ def _build_seed_gamma_jobs(
 ) -> list[dict[str, Any]]:
     """Partition cells deterministically by seed/gamma and optional chunks.
 
-    REAL-CAL places 700/750 cells at gamma=0.3.  A single job per
+    REAL-CAL-V2 places 700/750 cells at gamma=0.3.  A single job per
     seed/gamma therefore leaves only ten useful workers after the 50 one-cell
     sensitivity jobs finish.  Fixed-size chunks preserve the one-gamma trace
     loading contract while exposing enough independent work to keep the pool
@@ -638,7 +927,7 @@ def _apply_lp_seed_gamma_batch(job: dict[str, Any]) -> dict[str, Any]:
     """Solve and attach LP comparators for one seed/gamma partition.
 
     ``refresh`` discards previously stored LP results (used when the comparator
-    definition changes, e.g. the realized-cost model) and recomputes both
+    definition changes, e.g. the V2.3 realized-cost model) and recomputes both
     the full-horizon LP and the prefix regret curve.
     """
     output_root = Path(job["output_root"])
@@ -931,4 +1220,3 @@ class FormalRunner:
             "workers": workers,
             "run_version": self.run_version,
         }
-

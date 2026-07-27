@@ -9,12 +9,14 @@ dist/
 htmlcov/
 
 # Third-party raw data, generated traces, and full experiment outputs.
-data/
-data_real/
-results/
-reports/
-logs/
-tmp/
+# Root anchors are intentional: source packages such as src/oats_v2/data and
+# tests/data are code and must remain tracked.
+/data/
+/data_real/
+/results/
+/reports/
+/logs/
+/tmp/
 
 # Editor and operating-system noise.
 .DS_Store

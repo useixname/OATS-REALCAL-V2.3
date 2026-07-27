@@ -12,7 +12,7 @@ from .types import D, Money
 class ShadowEnvelopeState:
     """Non-monetary R3 resource account using public worst-case caps.
 
-    Lifecycle of a reservation (paper Eq. (91) P_return semantics):
+    Lifecycle of a reservation (V2.3 / paper Eq. (91) P_return semantics):
       * task activation HOLDS the escrow (worst-case bonus obligation);
       * admission COMMITS the escrow and the per-winner base caps;
       * settlement SETTLES each obligation at its realized amount and releases
@@ -245,4 +245,3 @@ class DualController:
         gradient = D(envelope_consumption) - D(pacing_budget)
         self.value = min(self.maximum, max(Decimal("0"), self.value + D(step_size) * gradient))
         return self.value
-

@@ -39,6 +39,20 @@ class TrustMetrics:
     population_available: int = 0
     selected_count: int = 0
     feedback_count: int = 0
+    trust_transition_count: int = 0
+    duplicate_feedback_suppressed_count: int = 0
+    feedback_count_definition: str = (
+        "completed independent worker-task feedback records submitted to the trust interface"
+    )
+    trust_transition_count_definition: str = (
+        "worker-specific trust-state transitions actually applied"
+    )
+    feedback_id_fields: tuple[str, ...] = (
+        "cell_id",
+        "feedback_slot",
+        "task_id",
+        "worker_id",
+    )
     brier: Decimal | None = None
     auc: Decimal | None = None
 

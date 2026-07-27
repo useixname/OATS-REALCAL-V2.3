@@ -32,7 +32,7 @@ class LPOpportunity:
     v_ijt: Decimal
     # Realized hindsight cost of executing this trade: truthful bid (minimal
     # IC base payment) + the score bonus sbar*score actually paid on purchase.
-    # The mechanism recycles worst-case reserves (shadow settlement, Eq. 91/93), so the
+    # V2.3 recycles worst-case reserves (shadow settlement, Eq. 91/93), so the
     # old reserve-cost model (Abar per pair + full gamma*V escrow per task,
     # never returned) priced trades ~2-3x above what the online mechanism
     # actually consumes and stopped being an upper bound.
@@ -207,7 +207,7 @@ def solve_global_lp(
 
     budget_row = [0.0] * n_vars
     for opp in opportunities:
-        # Realized-cost accounting: each trade consumes its truthful bid
+        # Realized-cost accounting (V2.3): each trade consumes its truthful bid
         # plus the realized score bonus. Worst-case reserves (Abar, task escrow)
         # are recycled by the online mechanism (shadow settlement, Eq. 91/93)
         # and therefore do not consume hindsight budget.
@@ -291,4 +291,3 @@ def compute_lp_gap(
         normalized_lp_gap=lp_gap / denom,
         max_violation=cached.max_violation,
     )
-
