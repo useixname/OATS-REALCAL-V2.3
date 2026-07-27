@@ -120,7 +120,9 @@ def test_dev_seed_single_cell_simulation() -> None:
     if not (ROOT / "trace_hashes.json").exists() or not (
         ROOT / "data" / "SYN-V2-1" / "20260715"
     ).exists():
-        pytest.skip("large SYN-V2-1 development trace is not included in the public code release")
+        pytest.skip(
+            "large development trace is not included in the public code release"
+        )
     trace_hashes = json.loads((ROOT / "trace_hashes.json").read_text(encoding="utf-8"))
     trace = load_trace(20260715, ROOT / "data" / "SYN-V2-1", trace_hashes)
     cell = next(

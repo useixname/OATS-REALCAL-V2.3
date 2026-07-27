@@ -12,8 +12,14 @@ python -m venv .venv
 # Windows: .venv\Scripts\activate
 # Linux/macOS: source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install -e ".[dev]"
+python -m pip install -e ".[dev,external]"
 ```
+
+For exact replication of the repaired 830-cell formal run, use Python 3.10.12
+with NumPy 1.26.4 and SciPy 1.13.1. The original runtime allocation, source
+identity, thread limits, and the fields that could not be recovered after host
+deallocation are archived in [`RUNTIME_ENVIRONMENT.md`](RUNTIME_ENVIRONMENT.md).
+Do not substitute a current workstation snapshot for that frozen record.
 
 Prepare the third-party data and traces as described in [`DATA.md`](DATA.md).
 
@@ -76,4 +82,33 @@ python scripts/analyze_realcal.py \
 The manuscript uses paired seeds as the sampling unit. Primary contrasts use
 paired differences and 10,000 paired-bootstrap resamples with bootstrap seed
 20260715. Descriptive grids and curves are not multiplicity-controlled tests.
+
+## 6. Calendar-time delayed-feedback replay
+
+The delayed-feedback extension replays the repaired mechanism with an event
+queue at fixed delays 0, 5, and 20:
+
+```bash
+python scripts/run_delay_queue_replay.py --help
+python scripts/audit_delay_queue_replay.py --help
+```
+
+The zero-delay configuration is the parity anchor. Positive-delay cells expose
+deferred trust updates, settlement timing, outstanding liability, and deadline
+effects; they do not replace the 830-cell matrix.
+
+## 7. Published Oasis baseline
+
+The public release includes only the published baseline used in the current
+manuscript:
+
+```bash
+python scripts/prepare_oasis_arrival_forecast.py --help
+python scripts/run_oasis_realcal.py --help
+python scripts/analyze_oasis_published_baseline.py --help
+```
+
+The adapter is isolated under `src/oats_external/`. Contract applicability and
+actual-payment budget gates remain part of the comparison; failed gates must
+not be converted into OATS wins.
 

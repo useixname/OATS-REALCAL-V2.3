@@ -76,7 +76,7 @@ def collect_contamination_boundary() -> dict[str, object]:
         "records": records,
         "adopted_defense": (
             "coverage-confidence soft-screening gate (theta_A=0.75); adopted via "
-            "the preregistered REAL-CAL evaluation protocol"
+            "REAL-CAL-V2.1 preregistration (EXPERIMENT_PREREGISTRATION_REALCAL_V2.md §7)"
         ),
         "candidate_defenses_not_adopted": [
             "honest-majority assumption",
@@ -119,4 +119,3 @@ if __name__ == "__main__":
     path = ROOT / "audit_results/anchor_contamination.json"
     path.write_text(json.dumps(output, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(output, sort_keys=True, separators=(",", ":")))
-

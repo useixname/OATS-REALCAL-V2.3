@@ -24,6 +24,9 @@ dependencies = [
 dev = [
   "pytest>=7.4,<9",
 ]
+external = [
+  "psutil>=5.9,<8",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]

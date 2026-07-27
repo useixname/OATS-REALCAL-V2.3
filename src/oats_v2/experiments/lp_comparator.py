@@ -32,7 +32,7 @@ class LPOpportunity:
     v_ijt: Decimal
     # Realized hindsight cost of executing this trade: truthful bid (minimal
     # IC base payment) + the score bonus sbar*score actually paid on purchase.
-    # The mechanism recycles worst-case reserves (shadow settlement, Eq. 91/93), so the
+    # OATS recycles worst-case reserves through shadow settlement, so the
     # old reserve-cost model (Abar per pair + full gamma*V escrow per task,
     # never returned) priced trades ~2-3x above what the online mechanism
     # actually consumes and stopped being an upper bound.
@@ -291,4 +291,3 @@ def compute_lp_gap(
         normalized_lp_gap=lp_gap / denom,
         max_violation=cached.max_violation,
     )
-

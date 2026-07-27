@@ -109,6 +109,12 @@ def compute_trust_metrics(
 ) -> TrustMetrics:
     selected = sum(1 for e in trust_events if e.get("selected"))
     feedback = sum(1 for e in trust_events if e.get("feedback"))
+    transitions = sum(
+        1 for e in trust_events if e.get("feedback") and e.get("trust_transition_applied")
+    )
+    duplicate_suppressions = sum(
+        1 for e in trust_events if e.get("feedback") and e.get("duplicate_feedback_suppressed")
+    )
     qualities = [D(e["quality"]) for e in trust_events if e.get("feedback") and "quality" in e]
     trust_vals = [D(e["rho"]) for e in trust_events if e.get("feedback") and "rho" in e]
     brier = None
@@ -135,6 +141,8 @@ def compute_trust_metrics(
         population_available=population_size,
         selected_count=selected,
         feedback_count=feedback,
+        trust_transition_count=transitions,
+        duplicate_feedback_suppressed_count=duplicate_suppressions,
         brier=brier,
         auc=auc,
     )
@@ -189,11 +197,17 @@ def finalize_run_result(
     trust_events: list[dict[str, Any]],
     population_size: int,
     final_trust_by_stratum: dict[str, list[Decimal]] | None = None,
+    selected_count_by_stratum: dict[str, int] | None = None,
 ) -> RunResult:
     result.channels = compute_channels(records)
     result.screening = compute_screening_metrics(screening_events)
     result.trust = compute_trust_metrics(trust_events, population_size, final_trust_by_stratum)
-    composition = Counter(r["stratum"] for r in records if r.get("selected"))
+    composition = (
+        Counter(selected_count_by_stratum)
+        if selected_count_by_stratum is not None
+        else Counter(r["stratum"] for r in records if r.get("selected"))
+    )
+    composition.pop("aggregate", None)
     total = sum(composition.values())
     if total:
         result.worker_type_composition = {
