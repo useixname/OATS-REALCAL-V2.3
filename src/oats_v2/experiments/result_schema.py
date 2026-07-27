@@ -112,6 +112,16 @@ class RunResult:
     runtime_breakdown: dict[str, float] = field(default_factory=dict)
     # Rejection-reason counts from selection (reserve/AV gates, capacity).
     rejection_counts: dict[str, int] = field(default_factory=dict)
+    # Calendar-time feedback/settlement audit. End-of-slot occupancy is sampled
+    # after delay-zero feedback has been processed.
+    feedback_queue_mode: str = "calendar-time"
+    mean_outstanding_score_escrow: str = "0"
+    peak_outstanding_score_escrow: str = "0"
+    terminal_outstanding_score_escrow: str = "0"
+    mean_outstanding_task_escrows: Decimal = Decimal("0")
+    peak_outstanding_task_escrows: int = 0
+    terminal_pending_task_count: int = 0
+    terminal_pending_feedback_count: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         def convert(value: Any) -> Any:

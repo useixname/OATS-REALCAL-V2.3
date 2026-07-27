@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from src.oats_v2.experiments.metrics import compute_trust_metrics
+from src.oats_v2.experiments.metrics import compute_trust_metrics, finalize_run_result
+from src.oats_v2.experiments.result_schema import RunResult
 from src.oats_v2.trust import TrustState, trust_feedback_id
 
 
@@ -114,3 +115,32 @@ def test_feedback_and_transition_metrics_are_not_conflated() -> None:
         "task_id",
         "worker_id",
     )
+
+
+def test_selection_composition_uses_worker_level_counts_not_aggregate_rows() -> None:
+    result = RunResult(
+        cell_id="cell-a",
+        config_hash="hash",
+        trace_hash="trace",
+        method_id="V2-FULL",
+        seed=1,
+        gamma="0.3",
+        budget_ratio="0.25",
+        invariant_status="PASS",
+    )
+    finalized = finalize_run_result(
+        result,
+        records=[
+            {"selected": True, "stratum": "aggregate", "realized_score": "0.8"},
+            {"selected": True, "stratum": "honest", "realized_score": "0.9"},
+            {"selected": True, "stratum": "malicious", "realized_score": "0.1"},
+        ],
+        screening_events=[],
+        trust_events=[],
+        population_size=2,
+        selected_count_by_stratum={"honest": 9, "malicious": 1},
+    )
+    assert finalized.worker_type_composition == {
+        "honest": Decimal("0.9"),
+        "malicious": Decimal("0.1"),
+    }

@@ -90,7 +90,7 @@ def main() -> int:
         fail("authorization does not target exactly 830 cells")
     if int(execution["workers"]) != 25:
         fail("authorized worker count is not 25")
-    if execution["output_root"] == "results/formal_realcal_v2_3":
+    if execution["output_root"] == "results/formal_realcal_pre_repair":
         fail("authorization attempts to overwrite the legacy formal result root")
 
     checks: list[dict[str, Any]] = []

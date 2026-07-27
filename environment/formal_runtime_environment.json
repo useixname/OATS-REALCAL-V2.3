@@ -1,0 +1,104 @@
+{
+  "schema_version": "oats-formal-runtime-archive-1.0.0",
+  "archive_status": "FROZEN_EVIDENCE_RECONSTRUCTION_WITH_EXPLICIT_GAPS",
+  "archived_at_utc": "2026-07-27T12:23:12.9481900Z",
+  "formal_run": {
+    "run_version": "formal-realcal-trustfix-1.0.0",
+    "matrix_id": "REAL-CAL-E1-E7-830",
+    "completed_cells": 830,
+    "invalid_cells": 0,
+    "workers": 25,
+    "formal_seeds": [
+      20260715,
+      20260716,
+      20260717,
+      20260718,
+      20260719,
+      20260720,
+      20260721,
+      20260722,
+      20260723,
+      20260724
+    ],
+    "command": "python3 scripts/run_formal_r4.py --matrix v2 --data-root data/REAL-CAL-V2 --trace-hashes data/REAL-CAL-V2/trace_hashes_realcal.json --output-root results/formal_realcal_trustfix_20260726 --run-version formal-realcal-trustfix-1.0.0 --workers 25 --seeds 20260715 20260716 20260717 20260718 20260719 20260720 20260721 20260722 20260723 20260724",
+    "thread_limits": {
+      "OMP_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1"
+    },
+    "requested_nice": -5,
+    "requested_nice_applied": false,
+    "requested_nice_evidence": "nice: cannot set niceness: Permission denied"
+  },
+  "hardware": {
+    "cpu": {
+      "provider_allocation_model": "Intel(R) Xeon(R) Gold 6459C",
+      "provider_allocation_model_evidence": "resource allocation declared by the job owner; not captured by lscpu in the frozen result",
+      "cgroup_cpu_max": "2500000 100000",
+      "cpu_quota_cores": 25,
+      "logical_cpus_visible_to_python": 128,
+      "formal_worker_processes": 25
+    },
+    "memory": {
+      "cgroup_limit_bytes": 96636764160,
+      "cgroup_limit_gib": 90
+    },
+    "gpu": {
+      "model": "NVIDIA GeForce RTX 5090",
+      "memory_mib": 32607,
+      "used_by_formal_path": false,
+      "reason": "The formal path is CPU/SciPy-bound and contains no GPU execution backend."
+    },
+    "storage": {
+      "free_bytes_at_remote_preflight": 46016823296
+    }
+  },
+  "software": {
+    "platform": "Linux-5.15.0-78-generic-x86_64-with-glibc2.35",
+    "python": "3.10.12 (main, Jun 22 2026, 18:55:27) [GCC 11.4.0]",
+    "python_executable": "/usr/bin/python3",
+    "formal_path_direct_third_party_packages": {
+      "numpy": "1.26.4",
+      "scipy": "1.13.1"
+    },
+    "dependency_scope_note": "The formal execution path imports NumPy and SciPy as its direct third-party runtime dependencies; the remaining imports are Python standard-library or repository modules."
+  },
+  "source_identity": {
+    "exact_formal_source_commit": "2cc2ac64c98937bac9d7ac0ad3d94f0e5548126a",
+    "local_deployment_archive_sha256": "d89ae0a276bee797103059d3d80a300bd03008f2643fd61c921ff0ff5cb42a47",
+    "local_deployment_archive_bytes": 479058,
+    "formal_source_hashes": {
+      "scripts/run_formal_r4.py": "a68c69e225c49bcf765f1c6e8cfb5e0468c860f8d95760bcabade21047694ee1",
+      "src/oats_v2/experiments/formal_runner.py": "aa9bba7dbc9bab0f16dbb14e7f48ccf16e02a0572cadd397fbd36adf4f84a45a",
+      "src/oats_v2/experiments/metrics.py": "6821c63b7f4d1b32c24514cfc7821fa1720826294f835e521c60f08b1b1cbfb2",
+      "src/oats_v2/experiments/result_schema.py": "169c9eb00e8c3381daa88b83154c3dfd593b684d160aeb2b907b6e177f596d44",
+      "src/oats_v2/experiments/run_matrix.py": "6af160151f3bf1e89a8523b0730096b6f604e1d391b197bf9c098b63afce880e",
+      "src/oats_v2/experiments/trace_loader.py": "32bd7e3027a709fe1f0c0474877ec9d3ad0cf4c97b76eeb35ffe92d95350b827",
+      "src/oats_v2/trust.py": "e6cba07ec10c4654609f5e8b6cc7acbb0d9a72ed3b5652c4d646a59072789a68"
+    }
+  },
+  "evidence": {
+    "formal_evidence_manifest": {
+      "sha256": "70ec46458909f969d73e2ae3ae4eba3993a5f8a386503c8bfdc25ea5b4444d7a",
+      "recorded_at_utc": "2026-07-26T16:58:06.0000000Z"
+    },
+    "formal_authorization": {
+      "sha256": "ca7e3049601f18bf96539c2e2cd08beb6b121168596576c851ccc06ded036fe3",
+      "recorded_at_utc": "2026-07-26T15:36:48.1018872Z"
+    },
+    "remote_local_freeze_receipt": {
+      "sha256": "c05eedac29f35ef5aff50b5e141744bf1a42ca325f312e8d96f895f6fb080c1e",
+      "recorded_at_utc": "2026-07-26T17:02:16.1704839Z"
+    }
+  },
+  "not_recoverable_after_host_deallocation": [
+    "full pip freeze output",
+    "Linux distribution /etc/os-release",
+    "complete lscpu topology and microcode",
+    "GPU driver and CUDA toolkit versions",
+    "BLAS build configuration",
+    "filesystem and mount configuration"
+  ],
+  "interpretation": "Runtime values in the paper remain bottleneck diagnostics. The archive identifies the formal allocation and critical execution stack but does not turn heterogeneous method-cell timings into a controlled cross-method speed benchmark."
+}

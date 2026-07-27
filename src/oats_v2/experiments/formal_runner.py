@@ -19,6 +19,7 @@ from ..data.schemas import TraceConfig
 from ..ideal_range_screen import IdealRangeScreen
 from ..invariants import assert_all
 from ..ledger import LedgerState
+from ..feedback_calendar import FeedbackCalendar, QueuedTaskOutcome, QueuedWorkerFeedback
 from ..settlement import settle_base_for_status, settle_task_scores
 from ..shadow_envelope import DualController, ShadowEnvelopeState
 from ..task_activation import activate_task_atomic
@@ -69,6 +70,92 @@ class SlotOutcome:
     stratum: str
     selected: bool
     rare_event: bool
+
+
+def _apply_due_task_outcomes(
+    events: tuple[QueuedTaskOutcome, ...],
+    *,
+    cell: RunCell,
+    trust: TrustState,
+    ledger: LedgerState,
+    shadow: ShadowEnvelopeState,
+    trust_events: list[dict[str, Any]],
+    alpha: Decimal,
+    money_grid: Decimal,
+) -> tuple[Decimal, list[Decimal], list[Decimal]]:
+    """Apply due outcomes in the formal worker-specific feedback order.
+
+    Task events are already sorted by ``(feedback_slot, task_id, task_key)`` by
+    ``FeedbackCalendar``. Worker feedback inside each task is sorted by
+    ``(worker_id, contract_id)``. Because the event fixes one task, the combined
+    order is the manuscript contract ``(feedback_slot, task_id, worker_id)``.
+    """
+
+    gross_delta = Decimal("0")
+    estimated: list[Decimal] = []
+    realized: list[Decimal] = []
+    for event in events:
+        remaining = ledger.task_escrows[event.task_key]
+        score_payments: dict[str, Decimal] = {}
+        for record in sorted(
+            event.feedback_records,
+            key=lambda item: (item.worker_id, item.contract_id),
+        ):
+            audit = trust_events[record.trust_event_index]
+            if not record.feedback_available:
+                audit["feedback_resolution"] = "missing"
+                continue
+            feedback_id = trust_feedback_id(
+                cell.cell_id,
+                event.available_slot,
+                record.task_id,
+                record.worker_id,
+            )
+            rho_before = trust.values[record.worker_id]
+            transitions_before = trust.transition_count
+            duplicate_suppressions_before = trust.duplicate_feedback_suppressed_count
+            trust.update(
+                record.worker_id,
+                feedback_id,
+                record.quality,
+                alpha,
+                available=True,
+                independent=True,
+            )
+            transition_applied = trust.transition_count == transitions_before + 1
+            duplicate_suppressed = (
+                trust.duplicate_feedback_suppressed_count
+                == duplicate_suppressions_before + 1
+            )
+            audit.update(
+                {
+                    "feedback": True,
+                    "feedback_id": feedback_id,
+                    "feedback_slot": event.available_slot,
+                    "quality": record.quality,
+                    "rho": rho_before,
+                    "trust_transition_applied": transition_applied,
+                    "duplicate_feedback_suppressed": duplicate_suppressed,
+                    "feedback_resolution": "completed",
+                }
+            )
+            amount = (record.score_cap * record.quality).quantize(
+                money_grid,
+                rounding=ROUND_DOWN,
+            )
+            if amount > remaining:
+                amount = remaining.quantize(money_grid, rounding=ROUND_DOWN)
+            score_payments[record.contract_id] = amount
+            remaining -= amount
+            if record.recognize_value_at_feedback:
+                gross_delta += record.realized_value
+                estimated.append(record.estimated_value)
+                realized.append(record.realized_value)
+
+        receipt = ledger.close_task(event.task_key, score_payments)
+        released_total = Decimal(receipt["released"])
+        shadow.settle_task(event.task_key, released_total)
+    return gross_delta, estimated, realized
 
 
 def _build_anchor_registry(trace: TraceBundle, contamination: Decimal) -> tuple[HistoricalAnchorRegistry, dict[int, Any]]:
@@ -197,6 +284,7 @@ def simulate_cell(cell: RunCell, trace: TraceBundle, lp_cache: LPComparatorCache
     trust.event_log.enabled = False
     for worker_id in trace.workers:
         trust.initialize(worker_id, RHO0)
+    feedback_calendar = FeedbackCalendar()
     dual = DualController(Decimal("0"), lambda_max)
     screen_backend = IdealRangeScreen(record_events=False, confidence_threshold=cell.theta_a)
     anchors, anchor_snapshots = _build_anchor_registry(trace, cell.contamination)
@@ -228,16 +316,40 @@ def simulate_cell(cell: RunCell, trace: TraceBundle, lp_cache: LPComparatorCache
     gross_total = Decimal("0")
     activated_count = contracted_count = purchased_count = 0
     deadline_met = deadline_total = 0
+    outstanding_score_sum = Decimal("0")
+    peak_outstanding_score = Decimal("0")
+    outstanding_task_sum = 0
+    peak_outstanding_tasks = 0
     invariant_status = "PASS"
 
     try:
         for slot in range(1, HORIZON + 1):
+            # Calendar phase 1: feedback scheduled by earlier purchases becomes
+            # part of the history before the current slot's online decision.
+            t0 = time.perf_counter()
+            due = feedback_calendar.pop_due(slot)
+            if due:
+                gross_delta, estimated_delta, realized_delta = _apply_due_task_outcomes(
+                    due,
+                    cell=cell,
+                    trust=trust,
+                    ledger=ledger,
+                    shadow=shadow,
+                    trust_events=trust_events,
+                    alpha=alpha0,
+                    money_grid=Decimal("0.001"),
+                )
+                gross_total += gross_delta
+                mc_estimated.extend(estimated_delta)
+                mc_realized.extend(realized_delta)
+            t_settlement += time.perf_counter() - t0
+
             lambda_t = dual.value if method.use_dual else Decimal("0")
             slot_tasks = _tasks_for_slot(trace, slot, cell.arrival_multiplier)
             slot_tasks.sort(key=lambda t: t.task_id)
             tasks_this_slot = {t.task_id: t for t in slot_tasks}
             task_keys: dict[str, str] = {}
-            # V2.3 dual pacing: remaining-quota flow control on the SHADOW
+            # OATS dual pacing: remaining-quota flow control on the SHADOW
             # envelope (the resource that actually binds). Signal history:
             #   * V2 paced the per-slot gross reserve envelope C_env — lambda
             #     rose with zero budget pressure (15% net loss vs no-dual).
@@ -249,7 +361,7 @@ def simulate_cell(cell: RunCell, trace: TraceBundle, lp_cache: LPComparatorCache
             #     diurnal binge, lambda kept rising while current flow was
             #     already zero, then decayed too slowly; 23% of the envelope
             #     went unused and net value fell 24% below no-dual.
-            # V2.3 controls the instantaneous flow against the remaining quota:
+            # OATS controls the instantaneous flow against the remaining quota:
             #     quota_t    = shadow_free(t-) / (T - t + 1)
             #     gradient_t = flow_t / quota_t - 1
             # (paper Eq. (71) with P_res = this slot's reserved worst-case
@@ -360,6 +472,10 @@ def simulate_cell(cell: RunCell, trace: TraceBundle, lp_cache: LPComparatorCache
                         stratum: str(sum((trust.values[w] for w in ids), Decimal("0")) / Decimal(len(ids)))
                         for stratum, ids in workers_by_stratum.items()
                     }
+                outstanding_score_sum += ledger.locked_score
+                peak_outstanding_score = max(peak_outstanding_score, ledger.locked_score)
+                outstanding_task_sum += len(ledger.task_escrows)
+                peak_outstanding_tasks = max(peak_outstanding_tasks, len(ledger.task_escrows))
                 continue
 
             snapshot = AllocationSnapshot(
@@ -404,8 +520,8 @@ def simulate_cell(cell: RunCell, trace: TraceBundle, lp_cache: LPComparatorCache
                 invariant_status = "INVALID"
                 break
 
-            task_score_payments: dict[str, dict[str, Decimal]] = {}
-            task_sbars: dict[str, Decimal] = {}
+            queued_feedback_by_task: dict[str, list[QueuedWorkerFeedback]] = {}
+            queued_slot_by_task: dict[str, int] = {}
 
             for key in selection.allocation.winners:
                 worker_id, task_id = key.split("|", 1)
@@ -449,7 +565,7 @@ def simulate_cell(cell: RunCell, trace: TraceBundle, lp_cache: LPComparatorCache
                 )
                 t0 = time.perf_counter()
                 receipt = settle_base_for_status(ledger, key, screen_status)
-                # V2.3: settle the shadow base cap at the realized payment and
+                # OATS: settle the shadow base cap at the realized payment and
                 # return the worst-case slack (paper Eq. (91) P_return). The V1
                 # shadow kept every cap committed forever, which silently turned
                 # the envelope into a hard market-capacity cap (~43k purchases
@@ -463,100 +579,107 @@ def simulate_cell(cell: RunCell, trace: TraceBundle, lp_cache: LPComparatorCache
                 missing_key = str(cell.missing_prob)
                 delay_key = str(cell.delay)
                 outcome_available = not task.missing_mask.get(missing_key, False)
-                if outcome_available and cell.delay > 0:
-                    avail_slot = slot + task.delay_mask.get(delay_key, 0)
-                    outcome_available = avail_slot <= HORIZON
 
                 purchased_statuses = (
                     MechanismStatus.SCREEN_PASS,
                     MechanismStatus.SCREEN_SOFT_PASS,
                     MechanismStatus.COLD_START,
                 )
-                if screen_status in purchased_statuses and outcome_available:
+                if screen_status in purchased_statuses:
                     purchased_count += 1
-                    gross_total += pot.v_ijt
-                    mc_estimated.append(vhat)
-                    mc_realized.append(pot.v_ijt)
-                    task_sbars[task_id] = sbar
-                    task_score_payments.setdefault(task_keys[task_id], {})[key] = pot.score
                     outcome_slot = slot + task.delay_mask.get(delay_key, 0)
-                    feedback_id = trust_feedback_id(
-                        cell.cell_id,
-                        outcome_slot,
-                        task_id,
-                        worker_id,
-                    )
-                    rho_before = trust.values[worker_id]
-                    transitions_before = trust.transition_count
-                    duplicate_suppressions_before = (
-                        trust.duplicate_feedback_suppressed_count
-                    )
-                    trust.update(
-                        worker_id,
-                        feedback_id,
-                        pot.score,
-                        alpha0,
-                        available=True,
-                        independent=True,
-                    )
-                    transition_applied = trust.transition_count == transitions_before + 1
-                    duplicate_suppressed = (
-                        trust.duplicate_feedback_suppressed_count
-                        == duplicate_suppressions_before + 1
-                    )
+                    recognize_value_at_feedback = outcome_available and outcome_slot > slot
+                    if outcome_available and not recognize_value_at_feedback:
+                        # Preserve the frozen delay-zero accounting order while
+                        # still deferring its trust transition until after the
+                        # current selection phase.
+                        gross_total += pot.v_ijt
+                        mc_estimated.append(vhat)
+                        mc_realized.append(pot.v_ijt)
+                    # A missing outcome retains the task escrow until its
+                    # contractual deadline, then returns it without a score
+                    # payment or trust transition.
+                    settlement_slot = outcome_slot if outcome_available else max(slot, task.deadline)
+                    trust_event_index = len(trust_events)
                     trust_events.append(
                         {
                             "selected": True,
-                            "feedback": True,
-                            "feedback_id": feedback_id,
-                            "quality": pot.score,
-                            "rho": rho_before,
-                            "trust_transition_applied": transition_applied,
-                            "duplicate_feedback_suppressed": duplicate_suppressed,
+                            "feedback": False,
+                            "purchase_slot": slot,
+                            "scheduled_feedback_slot": outcome_slot if outcome_available else None,
+                            "task_id": task_id,
+                            "worker_id": worker_id,
+                            "feedback_resolution": "pending",
                         }
                     )
-                    deadline_total += 1
-                    if outcome_slot <= task.deadline:
-                        deadline_met += 1
-                elif screen_status in purchased_statuses:
-                    trust_events.append({"selected": True, "feedback": False})
+                    task_key = task_keys[task_id]
+                    queued_feedback_by_task.setdefault(task_key, []).append(
+                        QueuedWorkerFeedback(
+                            worker_id=worker_id,
+                            task_id=task_id,
+                            contract_id=key,
+                            quality=pot.score,
+                            score_cap=sbar,
+                            estimated_value=vhat,
+                            realized_value=pot.v_ijt,
+                            trust_event_index=trust_event_index,
+                            feedback_available=outcome_available,
+                            recognize_value_at_feedback=recognize_value_at_feedback,
+                        )
+                    )
+                    existing_slot = queued_slot_by_task.setdefault(task_key, settlement_slot)
+                    if existing_slot != settlement_slot:
+                        raise AssertionError("one task produced inconsistent feedback slots")
+                    if outcome_available:
+                        deadline_total += 1
+                        if outcome_slot <= task.deadline:
+                            deadline_met += 1
 
             for task_id, task_key in task_keys.items():
-                released_total = Decimal("0")
+                feedback_records = queued_feedback_by_task.get(task_key)
+                if feedback_records:
+                    feedback_calendar.schedule(
+                        QueuedTaskOutcome(
+                            purchase_slot=slot,
+                            available_slot=queued_slot_by_task[task_key],
+                            task_id=task_id,
+                            task_key=task_key,
+                            deadline=tasks_this_slot[task_id].deadline,
+                            feedback_records=tuple(feedback_records),
+                        )
+                    )
+                    continue
+                # No purchased report remains for this task. Empty activations
+                # and screen-failed committed escrows are released immediately.
+                t0 = time.perf_counter()
                 if task_key in ledger.task_escrows:
-                    payments = task_score_payments.get(task_key, {})
-                    sbar = task_sbars.get(task_id)
-                    t0 = time.perf_counter()
-                    if sbar is not None and payments:
-                        # Score payment = sbar * quality, floor-quantized to the
-                        # money grid and clamped by the remaining task escrow in
-                        # deterministic key order (paper Theorem 5: total bonus
-                        # never exceeds the escrow; unused escrow is returned).
-                        # sbar itself is quantized upward at 1e-6, so K payments
-                        # at quality ~1 could otherwise overshoot gamma*V by a
-                        # few micro-units.
-                        grid = Decimal("0.001")
-                        remaining = ledger.task_escrows[task_key]
-                        quantized: dict[str, Decimal] = {}
-                        for pay_key in sorted(payments):
-                            amount = (sbar * payments[pay_key]).quantize(grid, rounding=ROUND_DOWN)
-                            if amount > remaining:
-                                amount = remaining.quantize(grid, rounding=ROUND_DOWN)
-                            quantized[pay_key] = amount
-                            remaining -= amount
-                        ledger.close_task(task_key, quantized)
-                        released_total = sum(quantized.values(), Decimal("0"))
-                    else:
-                        ledger.close_task(task_key, {})
-                    t_settlement += time.perf_counter() - t0
-                # Shadow: tasks that never received a contract stay in `held` and
-                # return to free (Spec §7/§3); contracted tasks settle at the
-                # realized score payout and return the unused escrow (V2.3,
-                # paper Eq. (93)).
+                    ledger.close_task(task_key, {})
                 if task_key in shadow.held_tasks:
                     shadow.release_empty_task(task_key)
                 elif task_key in shadow.committed_tasks:
-                    shadow.settle_task(task_key, released_total)
+                    shadow.settle_task(task_key, Decimal("0"))
+                t_settlement += time.perf_counter() - t0
+
+            # Calendar phase 2: delay-zero outcomes from the current purchases
+            # are processed only after selection, preserving the online
+            # information firewall while making them available to slot t+1.
+            t0 = time.perf_counter()
+            due = feedback_calendar.pop_due(slot)
+            if due:
+                gross_delta, estimated_delta, realized_delta = _apply_due_task_outcomes(
+                    due,
+                    cell=cell,
+                    trust=trust,
+                    ledger=ledger,
+                    shadow=shadow,
+                    trust_events=trust_events,
+                    alpha=alpha0,
+                    money_grid=Decimal("0.001"),
+                )
+                gross_total += gross_delta
+                mc_estimated.extend(estimated_delta)
+                mc_realized.extend(realized_delta)
+            t_settlement += time.perf_counter() - t0
 
             quota = shadow_free_before / Decimal(HORIZON - slot + 1)
             if quota > 0:
@@ -569,10 +692,28 @@ def simulate_cell(cell: RunCell, trace: TraceBundle, lp_cache: LPComparatorCache
                     stratum: str(sum((trust.values[w] for w in ids), Decimal("0")) / Decimal(len(ids)))
                     for stratum, ids in workers_by_stratum.items()
                 }
+            outstanding_score_sum += ledger.locked_score
+            peak_outstanding_score = max(peak_outstanding_score, ledger.locked_score)
+            outstanding_task_sum += len(ledger.task_escrows)
+            peak_outstanding_tasks = max(peak_outstanding_tasks, len(ledger.task_escrows))
 
     except OnlineFirewallViolation as exc:
         invariant_status = "FIREWALL_VIOLATION"
         failure_counts[str(exc)] = 1
+
+    # Record terminal exposure before releasing unresolved beyond-horizon or
+    # missing-feedback escrows. The terminal close is conservative: it pays no
+    # score bonus and applies no trust update.
+    terminal_outstanding_score = ledger.locked_score
+    terminal_pending_task_count = feedback_calendar.pending_task_count
+    terminal_pending_feedback_count = feedback_calendar.pending_feedback_count
+    for event in feedback_calendar.drain():
+        for record in event.feedback_records:
+            trust_events[record.trust_event_index]["feedback_resolution"] = "terminal_expiry"
+        if event.task_key in ledger.task_escrows:
+            ledger.close_task(event.task_key, {})
+        if event.task_key in shadow.committed_tasks:
+            shadow.settle_task(event.task_key, Decimal("0"))
 
     try:
         assert_all(ledger, shadow, ())
@@ -630,6 +771,14 @@ def simulate_cell(cell: RunCell, trace: TraceBundle, lp_cache: LPComparatorCache
         failure_counts=failure_counts,
         runtime_seconds=elapsed,
         peak_memory_mb=0.0,
+        feedback_queue_mode="calendar-time-predecision-plus-postdecision-delay0",
+        mean_outstanding_score_escrow=str(outstanding_score_sum / Decimal(HORIZON)),
+        peak_outstanding_score_escrow=str(peak_outstanding_score),
+        terminal_outstanding_score_escrow=str(terminal_outstanding_score),
+        mean_outstanding_task_escrows=Decimal(outstanding_task_sum) / Decimal(HORIZON),
+        peak_outstanding_task_escrows=peak_outstanding_tasks,
+        terminal_pending_task_count=terminal_pending_task_count,
+        terminal_pending_feedback_count=terminal_pending_feedback_count,
     )
     result.rejection_counts = rejection_counts
     result.trust_trajectory = trust_trajectory
@@ -682,6 +831,7 @@ def simulate_cell(cell: RunCell, trace: TraceBundle, lp_cache: LPComparatorCache
         trust_events=trust_events,
         population_size=len(trace.workers),
         final_trust_by_stratum=final_trust_by_stratum,
+        selected_count_by_stratum=type_selected,
     )
 
 
@@ -927,7 +1077,7 @@ def _apply_lp_seed_gamma_batch(job: dict[str, Any]) -> dict[str, Any]:
     """Solve and attach LP comparators for one seed/gamma partition.
 
     ``refresh`` discards previously stored LP results (used when the comparator
-    definition changes, e.g. the V2.3 realized-cost model) and recomputes both
+    definition changes, e.g. the repaired realized-cost model) and recomputes both
     the full-horizon LP and the prefix regret curve.
     """
     output_root = Path(job["output_root"])

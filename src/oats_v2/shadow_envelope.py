@@ -12,7 +12,7 @@ from .types import D, Money
 class ShadowEnvelopeState:
     """Non-monetary R3 resource account using public worst-case caps.
 
-    Lifecycle of a reservation (V2.3 / paper Eq. (91) P_return semantics):
+    Lifecycle of a reservation (OATS / paper return-settlement semantics):
       * task activation HOLDS the escrow (worst-case bonus obligation);
       * admission COMMITS the escrow and the per-winner base caps;
       * settlement SETTLES each obligation at its realized amount and releases

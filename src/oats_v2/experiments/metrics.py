@@ -197,11 +197,17 @@ def finalize_run_result(
     trust_events: list[dict[str, Any]],
     population_size: int,
     final_trust_by_stratum: dict[str, list[Decimal]] | None = None,
+    selected_count_by_stratum: dict[str, int] | None = None,
 ) -> RunResult:
     result.channels = compute_channels(records)
     result.screening = compute_screening_metrics(screening_events)
     result.trust = compute_trust_metrics(trust_events, population_size, final_trust_by_stratum)
-    composition = Counter(r["stratum"] for r in records if r.get("selected"))
+    composition = (
+        Counter(selected_count_by_stratum)
+        if selected_count_by_stratum is not None
+        else Counter(r["stratum"] for r in records if r.get("selected"))
+    )
+    composition.pop("aggregate", None)
     total = sum(composition.values())
     if total:
         result.worker_type_composition = {

@@ -1,0 +1,4 @@
+# Exact direct third-party packages recorded in the frozen formal manifest.
+# Python itself was 3.10.12 on Linux/glibc 2.35; see formal_runtime_environment.json.
+numpy==1.26.4
+scipy==1.13.1
